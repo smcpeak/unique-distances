@@ -25,8 +25,7 @@ constexpr int MAX_DISTANCE(int N)
 // An NxN checkerboard with up to N markers placed onto squares.
 //
 // This also keeps track of which of the possible distances have been
-// used and an overapproximation of which squares remain available for
-// placement of additional markers.
+// used.
 //
 // Within this class, squares are numbered starting with 0 in the lower
 // left, increasing by 1 as we move to the right, and increasing by N as
@@ -60,27 +59,6 @@ private:     // data
   //
   array<int,N> m_markers;
 
-  // Set of square numbers that contain a marker.
-  //
-  // Invariant: m_occupiedSquares.count() == m_numPlacedMarkers
-  //
-  // Invariant: The set of true indices is equal to the set of numbers
-  // in m_markers[0 .. m_numPlacedMarkers-1].
-  //
-  //bitset<N*N> m_occupiedSquares;
-
-#ifdef USE_AVAILABLE_SQUARES
-  // Set of square numbers where a marker could potentially be placed
-  // without overlapping an existing marker or violating the unique
-  // distance rule.
-  //
-  // This is an overapproximation of the available squares because it
-  // currently does not handle the case of a square that is equidistant
-  // between two existing markers.
-  //
-  bitset<N*N> m_availableSquares;
-#endif // USE_AVAILABLE_SQUARES
-
   // Set of distances between squares that have been used by some pair
   // of markers.  Not all distances are possible (only sums of squares
   // are), but I do not bother to compress away the unusable bits.
@@ -90,40 +68,23 @@ private:     // data
   //
   bitset<MAX_DISTANCE(N) + 1> m_usedDistances;
 
-private:     // methods
-  // Update m_availableSquares to reflect a newly added square.
-  void updateAvailableSquares();
-
 public:      // methods
   // Construct an empty board.
   MarkedBoard()
     : m_numPlacedMarkers(0),
       m_markers(),                     // set below
-      //m_occupiedSquares(),             // initially empty
-#ifdef USE_AVAILABLE_SQUARES
-      m_availableSquares(),            // set below
-#endif // USE_AVAILABLE_SQUARES
       m_usedDistances()                // initially empty
   {
     // Initialize 'm_markers' to bogus values for determinism.
     for (int i=0; i < N; i++) {
       m_markers.at(i) = N;
     }
-
-#ifdef USE_AVAILABLE_SQUARES
-    // Initially, all squares are available.
-    m_availableSquares.set();
-#endif // USE_AVAILABLE_SQUARES
   }
 
   // Make a copy of the given board.
   MarkedBoard(MarkedBoard const &obj)
     : m_numPlacedMarkers(obj.m_numPlacedMarkers),
       m_markers         (obj.m_markers),
-      //m_occupiedSquares (obj.m_occupiedSquares),
-#ifdef USE_AVAILABLE_SQUARES
-      m_availableSquares(obj.m_availableSquares),
-#endif // USE_AVAILABLE_SQUARES
       m_usedDistances   (obj.m_usedDistances)
   {}
 
@@ -172,7 +133,6 @@ public:      // methods
       }
     }
     return false;
-    //return m_occupiedSquares.test(square);
   }
 
   // True if it appears we can place a marker at 'square'.  This might
@@ -182,11 +142,8 @@ public:      // methods
   // Requires: 0 <= square < N*N
   //
   bool canPlaceAt(int square) const {
-#ifdef USE_AVAILABLE_SQUARES
-    return m_availableSquares.test(square);
-#else // USE_AVAILABLE_SQUARES
+    // This mechanism is no longer being used.
     return true;
-#endif // USE_AVAILABLE_SQUARES
   }
 
   // Modify this board, putting a marker on 'square'.  Return true iff
@@ -326,39 +283,8 @@ bool MarkedBoard<N>::placeAt(int square)
 
   // Place the new marker.
   m_markers.at(m_numPlacedMarkers++) = square;
-  //m_occupiedSquares.set(square);
-#ifdef USE_AVAILABLE_SQUARES
-  m_availableSquares.set(square, 0);
-#endif // USE_AVAILABLE_SQUARES
-
-  // Update m_availableSquares.
-  this->updateAvailableSquares();
 
   return true;
-}
-
-
-template <int N>
-void MarkedBoard<N>::updateAvailableSquares()
-{
-#ifdef USE_AVAILABLE_SQUARES
-  for (int square=0; square < N*N; square++) {
-    if (m_availableSquares.test(square)) {
-      // Calculate the distance from this square to each of the marked
-      // squares.
-      for (int i=0; i < this->m_numPlacedMarkers; i++) {
-        int marked = this->getSquareOfMarker(i);
-        int distance = computeDistance<N>(square, marked);
-        if (this->m_usedDistances.test(distance)) {
-          // This square is not a candidate because it would have a
-          // distance that is already used.
-          m_availableSquares.set(square, 0);
-          break;
-        }
-      }
-    }
-  }
-#endif // USE_AVAILABLE_SQUARES
 }
 
 
