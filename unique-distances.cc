@@ -1,7 +1,17 @@
 // unique-distances.cc
 // Solve puzzle to arrange markers on a grid such that all pairwise
 // distances are unique.
-// https://www.youtube.com/watch?v=M_YOCQaI5QI
+
+// Written in 2020 by Scott McPeak, scott.g.mcpeak at gmail.com.
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to the
+// public domain worldwide. This software is distributed without any
+// warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software. If not, see
+// <http://creativecommons.org/publicdomain/zero/1.0/>.
 
 #include <algorithm>                   // sort, swap
 #include <array>                       // array
