@@ -9,6 +9,7 @@
 #include <bitset>                      // bitset
 #include <iostream>                    // cout, etc.
 #include <list>                        // list
+#include <stdint.h>                    // uint8_t
 
 using namespace std;
 
@@ -66,15 +67,19 @@ private:     // data
   // Invariant: The set of true indices is equal to the set of numbers
   // in m_markers[0 .. m_numPlacedMarkers-1].
   //
-  bitset<N*N> m_occupiedSquares;
+  //bitset<N*N> m_occupiedSquares;
 
+#ifdef USE_AVAILABLE_SQUARES
   // Set of square numbers where a marker could potentially be placed
   // without overlapping an existing marker or violating the unique
   // distance rule.
   //
-  // TODO: For the moment, this is not really used.
+  // This is an overapproximation of the available squares because it
+  // currently does not handle the case of a square that is equidistant
+  // between two existing markers.
   //
   bitset<N*N> m_availableSquares;
+#endif // USE_AVAILABLE_SQUARES
 
   // Set of distances between squares that have been used by some pair
   // of markers.  Not all distances are possible (only sums of squares
@@ -85,13 +90,19 @@ private:     // data
   //
   bitset<MAX_DISTANCE(N) + 1> m_usedDistances;
 
+private:     // methods
+  // Update m_availableSquares to reflect a newly added square.
+  void updateAvailableSquares();
+
 public:      // methods
   // Construct an empty board.
   MarkedBoard()
     : m_numPlacedMarkers(0),
       m_markers(),                     // set below
-      m_occupiedSquares(),             // initially empty
+      //m_occupiedSquares(),             // initially empty
+#ifdef USE_AVAILABLE_SQUARES
       m_availableSquares(),            // set below
+#endif // USE_AVAILABLE_SQUARES
       m_usedDistances()                // initially empty
   {
     // Initialize 'm_markers' to bogus values for determinism.
@@ -99,16 +110,20 @@ public:      // methods
       m_markers.at(i) = N;
     }
 
+#ifdef USE_AVAILABLE_SQUARES
     // Initially, all squares are available.
     m_availableSquares.set();
+#endif // USE_AVAILABLE_SQUARES
   }
 
   // Make a copy of the given board.
   MarkedBoard(MarkedBoard const &obj)
     : m_numPlacedMarkers(obj.m_numPlacedMarkers),
       m_markers         (obj.m_markers),
-      m_occupiedSquares (obj.m_occupiedSquares),
+      //m_occupiedSquares (obj.m_occupiedSquares),
+#ifdef USE_AVAILABLE_SQUARES
       m_availableSquares(obj.m_availableSquares),
+#endif // USE_AVAILABLE_SQUARES
       m_usedDistances   (obj.m_usedDistances)
   {}
 
@@ -150,7 +165,14 @@ public:      // methods
   // Requires: 0 <= square < N*N
   //
   bool hasMarkerAt(int square) const {
-    return m_occupiedSquares.test(square);
+    // This method is only used during printing, so it can be slow.
+    for (int i=0; i < m_numPlacedMarkers; i++) {
+      if (this->getSquareOfMarker(i) == square) {
+        return true;
+      }
+    }
+    return false;
+    //return m_occupiedSquares.test(square);
   }
 
   // True if it appears we can place a marker at 'square'.  This might
@@ -160,7 +182,11 @@ public:      // methods
   // Requires: 0 <= square < N*N
   //
   bool canPlaceAt(int square) const {
+#ifdef USE_AVAILABLE_SQUARES
     return m_availableSquares.test(square);
+#else // USE_AVAILABLE_SQUARES
+    return true;
+#endif // USE_AVAILABLE_SQUARES
   }
 
   // Modify this board, putting a marker on 'square'.  Return true iff
@@ -188,6 +214,19 @@ public:      // methods
 };
 
 
+static uint8_t decomposeTable[256];
+
+static void makeDecomposeTable(int n)
+{
+  assert(n <= 16);
+  for (int r=0; r < n; r++) {
+    for (int c=0; c < n; c++) {
+      decomposeTable[r*n + c] = (r << 4) + c;
+    }
+  }
+}
+
+
 // Given a square number on an NxN board, return its row and column,
 // numbered starting at 0 from the left and bottom.
 //
@@ -196,9 +235,21 @@ public:      // methods
 template <int N>
 void decompose(int &r, int &c, int sq)
 {
-  assert(0 <= sq && sq < N*N);
-  r = sq / N;
-  c = sq % N;
+  // Removed assertion for performance reasons.
+  //assert(0 <= sq && sq < N*N);
+
+  // Simple but slow (?) method.
+  //r = sq / N;
+  //c = sq % N;
+
+  // Use lookup table for slightly better performance.
+  uint8_t rc = decomposeTable[sq];
+  r = rc >> 4;
+  c = rc & 0xf;
+
+  // Check equivalence.
+  //assert(r == sq / N);
+  //assert(c == sq % N);
 }
 
 
@@ -210,7 +261,7 @@ void decompose(int &r, int &c, int sq)
 // Ensures: 0 <= return <= (N-1)*(N-1)*2
 //
 template <int N>
-int computeDistance(int sq1, int sq2)
+int simpleComputeDistance(int sq1, int sq2)
 {
   int r1, c1;
   decompose<N>(r1, c1, sq1);
@@ -221,6 +272,30 @@ int computeDistance(int sq1, int sq2)
   int dr = r1 - r2;
   int dc = c1 - c2;
   return dr*dr + dc*dc;
+}
+
+
+static uint16_t distanceTable[256*256];
+
+template <int N>
+static void makeDistanceTable()
+{
+  for (int sq1=0; sq1 < N*N; sq1++) {
+    for (int sq2=0; sq2 < N*N; sq2++) {
+      int d = simpleComputeDistance<N>(sq1, sq2);
+      distanceTable[sq1 * N*N + sq2] = d;
+      assert(distanceTable[sq1 * N*N + sq2] == d);
+    }
+  }
+}
+
+
+template <int N>
+int computeDistance(int sq1, int sq2)
+{
+  int ret = distanceTable[sq1 * N*N + sq2];
+  //assert(ret == simpleComputeDistance<N>(sq1, sq2));
+  return ret;
 }
 
 
@@ -237,9 +312,6 @@ bool MarkedBoard<N>::placeAt(int square)
     return false;
   }
 
-  // Set of distances that are newly used due to marking 'square'.
-  bitset<MAX_DISTANCE(N)+1> newDistances;
-
   // Add the distance from the new square to each of the existing
   // markers.
   for (int i=0; i < m_numPlacedMarkers; i++) {
@@ -250,14 +322,43 @@ bool MarkedBoard<N>::placeAt(int square)
       return false;
     }
     m_usedDistances.set(distance);
-    newDistances.set(distance);
   }
 
   // Place the new marker.
   m_markers.at(m_numPlacedMarkers++) = square;
-  m_occupiedSquares.set(square);
+  //m_occupiedSquares.set(square);
+#ifdef USE_AVAILABLE_SQUARES
+  m_availableSquares.set(square, 0);
+#endif // USE_AVAILABLE_SQUARES
+
+  // Update m_availableSquares.
+  this->updateAvailableSquares();
 
   return true;
+}
+
+
+template <int N>
+void MarkedBoard<N>::updateAvailableSquares()
+{
+#ifdef USE_AVAILABLE_SQUARES
+  for (int square=0; square < N*N; square++) {
+    if (m_availableSquares.test(square)) {
+      // Calculate the distance from this square to each of the marked
+      // squares.
+      for (int i=0; i < this->m_numPlacedMarkers; i++) {
+        int marked = this->getSquareOfMarker(i);
+        int distance = computeDistance<N>(square, marked);
+        if (this->m_usedDistances.test(distance)) {
+          // This square is not a candidate because it would have a
+          // distance that is already used.
+          m_availableSquares.set(square, 0);
+          break;
+        }
+      }
+    }
+  }
+#endif // USE_AVAILABLE_SQUARES
 }
 
 
@@ -541,6 +642,9 @@ int numUniqueDistances()
 template <int N>
 void printSolutions()
 {
+  makeDecomposeTable(N);
+  makeDistanceTable<N>();
+
   int numPairs = (N * (N-1) / 2);
   int numDistances = numUniqueDistances<N>();
 
@@ -568,7 +672,7 @@ void printSolutions()
 
 int main()
 {
-  printSolutions<3>();
+  printSolutions<10>();
   return 0;
 }
 
