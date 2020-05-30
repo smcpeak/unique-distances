@@ -43,7 +43,20 @@ constexpr int MAX_DISTANCE(int N)
 //
 template <int N>
 class MarkedBoard {
-private:     // data
+public:      // class data
+  // The tables here exist as a minor optimization for some commonly
+  // executed arithmetic operations.  They are public because they are
+  // not really specific to this class, but need to be class members
+  // because it's not possible to have templatized global data.
+
+  // Map from square number to its row and column, where the row is the
+  // high 4 bits and the column is the low 4 bits.
+  static uint8_t decomposeTable[N*N];
+
+  // Map from 'sq1*N*N+sq2' to the distance between the squares.
+  static uint16_t distanceTable[N*N*N*N];
+
+private:     // instance data
   // Number of markers placed onto the board.
   //
   // Invariant: 0 <= m_numPlacedMarkers <= N
@@ -171,14 +184,19 @@ public:      // methods
 };
 
 
-static uint8_t decomposeTable[256];
+// Map from square number to its row and column, where the row is the
+// high 4 bits and the column is the low 4 bits.
+template <int N>
+/*static*/ uint8_t MarkedBoard<N>::decomposeTable[N*N];
 
-static void makeDecomposeTable(int n)
+// Build 'decomposeTable'.
+template <int N>
+void makeDecomposeTable()
 {
-  assert(n <= 16);
-  for (int r=0; r < n; r++) {
-    for (int c=0; c < n; c++) {
-      decomposeTable[r*n + c] = (r << 4) + c;
+  assert(N <= 16);
+  for (int r=0; r < N; r++) {
+    for (int c=0; c < N; c++) {
+      MarkedBoard<N>::decomposeTable[r*N + c] = (r << 4) + c;
     }
   }
 }
@@ -188,25 +206,23 @@ static void makeDecomposeTable(int n)
 // numbered starting at 0 from the left and bottom.
 //
 // Requires: 0 <= sq < N*N
+// Ensures: r == sq / N
+// Ensures: c == sq % N
 //
 template <int N>
 void decompose(int &r, int &c, int sq)
 {
-  // Removed assertion for performance reasons.
-  //assert(0 <= sq && sq < N*N);
+  assert(0 <= sq && sq < N*N);
 
-  // Simple but slow (?) method.
-  //r = sq / N;
-  //c = sq % N;
-
-  // Use lookup table for slightly better performance.
-  uint8_t rc = decomposeTable[sq];
+  // Use lookup table for around 10% better performance (when N==10 at
+  // least) than the obvious implementation.
+  uint8_t rc = MarkedBoard<N>::decomposeTable[sq];
   r = rc >> 4;
   c = rc & 0xf;
 
-  // Check equivalence.
-  //assert(r == sq / N);
-  //assert(c == sq % N);
+  // Check equivalence with slower method (if not NDEBUG).
+  assert(r == sq / N);
+  assert(c == sq % N);
 }
 
 
@@ -232,26 +248,30 @@ int simpleComputeDistance(int sq1, int sq2)
 }
 
 
-static uint16_t distanceTable[256*256];
+template <int N>
+/*static*/ uint16_t MarkedBoard<N>::distanceTable[N*N*N*N];
 
 template <int N>
-static void makeDistanceTable()
+void makeDistanceTable()
 {
   for (int sq1=0; sq1 < N*N; sq1++) {
     for (int sq2=0; sq2 < N*N; sq2++) {
       int d = simpleComputeDistance<N>(sq1, sq2);
-      distanceTable[sq1 * N*N + sq2] = d;
-      assert(distanceTable[sq1 * N*N + sq2] == d);
+      MarkedBoard<N>::distanceTable[sq1 * N*N + sq2] = d;
+
+      // Check that nothing was truncated.
+      assert(MarkedBoard<N>::distanceTable[sq1 * N*N + sq2] == d);
     }
   }
 }
 
 
+// Same specification as 'simpleComputeDistance', but about 10% faster.
 template <int N>
 int computeDistance(int sq1, int sq2)
 {
-  int ret = distanceTable[sq1 * N*N + sq2];
-  //assert(ret == simpleComputeDistance<N>(sq1, sq2));
+  int ret = MarkedBoard<N>::distanceTable[sq1 * N*N + sq2];
+  assert(ret == simpleComputeDistance<N>(sq1, sq2));
   return ret;
 }
 
@@ -565,10 +585,12 @@ int numUniqueDistances()
 }
 
 
+// Print all unique (up to rotation and reflection) solutions for the
+// NxN board.
 template <int N>
 void printSolutions()
 {
-  makeDecomposeTable(N);
+  makeDecomposeTable<N>();
   makeDistanceTable<N>();
 
   int numPairs = (N * (N-1) / 2);
@@ -580,6 +602,13 @@ void printSolutions()
        << '\n';
 
   if (numPairs > numDistances) {
+    // At N=16 and beyond, the number of distinct pairs is more than the
+    // number of possible distances, so it's clearly impossible.
+    //
+    // This happens because each Pythagorean triple reuses a distance
+    // that can be achieved along a single row or column, so as the
+    // number of triples increases, eventually there aren't enough
+    // unique distances to place all markers.
     cout << "No solutions exist because numPairs exceeds numDistances.\n";
     return;
   }
