@@ -483,10 +483,10 @@ static long numPlaceMarkersCalls = 0;
 
 
 // Add to 'solutions' all of the solved boards obtainable by adding
-// markers to 'orig' and that are not already present, including as
+// markers to 'orig' and that are not already present, possibly as
 // rotated and/or flipped variants, in 'solutions'.
 //
-// If 'orig' is already solved, print it alone.
+// If 'orig' is already solved, add it (if not already present).
 //
 template <int N>
 void placeMarkers(list<MarkedBoard<N> > &solutions,
