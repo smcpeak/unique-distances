@@ -49,7 +49,7 @@ This is a table of the results obtained with this program.
   11           0          79      55         60
   12           0         561      66         70
   13           0        4329      78         82
-  14                              91         93
+  14           0       27260      91         93
   15                             105        105
   16           0                 120        119
 ```
@@ -89,10 +89,10 @@ For N=7, there is only one solution:
   O.O....
 ```
 
-## Speculation about N=14 and N=15
+## Speculation about N=15
 
-The trend in the table strongly suggests there are no solutions for N=14
-or N=15, but I didn't let the program run long enough to check that.
+The trend in the table strongly suggests there are no solutions for N=15,
+but I haven't let the program run long enough to check that.
 
 ## Absence of solutions for N=16 and beyond
 
