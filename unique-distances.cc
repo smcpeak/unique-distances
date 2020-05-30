@@ -637,7 +637,7 @@ void printSolutions()
 
 int main()
 {
-  printSolutions<10>();
+  printSolutions<6>();
   return 0;
 }
 
