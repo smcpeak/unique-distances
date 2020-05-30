@@ -89,10 +89,11 @@ For N=7, there is only one solution:
   O.O....
 ```
 
-## Speculation about N=14 and N=15
+## Speculation about N=13, N=14, and N=15
 
-The trend in the table strongly suggests there are no solutions for N=14
-or N=15, but I didn't let the program run long enough to check that.
+The trend in the table strongly suggests there are no solutions for
+N=13, N=14, or N=15, but I didn't let the program run long enough to
+check that.
 
 ## Absence of solutions for N=16 and beyond
 
