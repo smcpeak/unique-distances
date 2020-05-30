@@ -46,8 +46,8 @@ constexpr int MAX_DISTANCE(int N)
 //   0 1 2
 //
 // Additionally, within this class, "distance" means the square of the
-// cartesian distance, i.e., dx*dx + dy*dy.  The original statement of
-// the puzzle asks for unique cartesian distances, but it is of course
+// euclidean distance, i.e., dx*dx + dy*dy.  The original statement of
+// the puzzle asks for unique euclidean distances, but it is of course
 // equivalent to instead use unique squares of distance, which avoids
 // needlessly computing square roots.
 //
@@ -237,7 +237,7 @@ void decompose(int &r, int &c, int sq)
 
 
 // Given two square numbers on an NxN board, return the square of the
-// cartesian distance between them.
+// euclidean distance between them.
 //
 // Requires: 0 <= sq1 < N*N
 // Requires: 0 <= sq2 < N*N
