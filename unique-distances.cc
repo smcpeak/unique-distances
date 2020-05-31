@@ -24,11 +24,33 @@
 using namespace std;
 
 
+// When set, use the 'm_availableSquares' optimization.
+#define USE_AVAILABLE_SQUARES
+
+
+// Number of calls to certain functions, kept in order to measure the
+// effectiveness of some optimizations.
+static long long numPlaceMarkersCalls = 0;
+static long long numPlaceAtCalls = 0;
+
+
 // Return the maximum possible distance (squared) between two squares
 // on the NxN checkerboard.
+//
+// When this is used below as an array size, we add one because array
+// indices start at 0.  (Alternatively, I could have subtracted one
+// before using a distance as an index, but for simplicity did not do
+// that.)
 constexpr int MAX_DISTANCE(int N)
 {
   return (N-1) * (N-1) * 2;
+}
+
+
+// Number of distinct pairs of N elements.
+constexpr int NUM_PAIRS(int N)
+{
+  return N * (N-1) / 2;
 }
 
 
@@ -66,6 +88,17 @@ public:      // class data
   // Map from 'sq1*N*N+sq2' to the distance between the squares.
   static uint16_t distanceTable[N*N*N*N];
 
+private:     // class data
+  // Map from (distance, square) to a mask that contains zeroes for
+  // all squares that are 'distance' from 'square', and ones elsewhere.
+  static array< array< bitset<N*N>, N*N >, MAX_DISTANCE(N)+1 >
+    s_squaresAtDistanceFromMap;
+
+  // Map from (sq1, sq2) to a mask that contains zeroes for all squares
+  // that are the same distance from both.
+  static array< array< bitset<N*N>, N*N >, N*N >
+    s_equidistantSquaresMap;
+
 private:     // instance data
   // Number of markers placed onto the board.
   //
@@ -82,33 +115,75 @@ private:     // instance data
   //
   array<int,N> m_markers;
 
+#ifdef USE_AVAILABLE_SQUARES
+  // Set of squares that are available for attempted placement.  This is
+  // an overapproximation; it might be that some squares are marked as
+  // available but in fact will not work.
+  //
+  // The reason for maintaining this set is to detect and avoid some bad
+  // placements more efficiently than the naive method.
+  bitset<N*N> m_availableSquares;
+#endif // USE_AVAILABLE_SQUARES
+
   // Set of distances between squares that have been used by some pair
   // of markers.  Not all distances are possible (only sums of squares
   // are), but I do not bother to compress away the unusable bits.
   //
-  // Invariant: m_usedDistances.count() ==
+  // Invariant: m_usedDistancesBitset.count() ==
   //            m_numPlacedMarkers * (m_numPlacedMarkers-1) / 2
   //
-  bitset<MAX_DISTANCE(N) + 1> m_usedDistances;
+  bitset<MAX_DISTANCE(N) + 1> m_usedDistancesBitset;
+
+  // Sequence of used distances, in the order they were used as markers
+  // were placed.  This is maintained to facilitate iterating over the
+  // set.
+  //
+  // Invariant: elementsOf(m_usedDistancesArray) == m_usedDistancesBitset
+  //
+  array<int, NUM_PAIRS(N)> m_usedDistancesArray;
+
+private:     // methods
+#ifdef USE_AVAILABLE_SQUARES
+  // Remove from 'm_availableSquares' all squares that are 'distance'
+  // away from 'square'.
+  void removeAvailableSquaresAt(int distance, int square);
+
+  // Remove from 'm_availableSquares' all squares that are the same
+  // distance from 'sq1' and 'sq2'.
+  void removeEquidistantSquares(int sq1, int sq2);
+#endif // USE_AVAILABLE_SQUARES
 
 public:      // methods
   // Construct an empty board.
   MarkedBoard()
     : m_numPlacedMarkers(0),
       m_markers(),                     // set below
-      m_usedDistances()                // initially empty
+#ifdef USE_AVAILABLE_SQUARES
+      m_availableSquares(),            // set below
+#endif // USE_AVAILABLE_SQUARES
+      m_usedDistancesBitset(),         // initially empty
+      m_usedDistancesArray()
   {
     // Initialize 'm_markers' to bogus values for determinism.
     for (int i=0; i < N; i++) {
       m_markers.at(i) = N;
     }
+
+#ifdef USE_AVAILABLE_SQUARES
+    // Initially, all are available.
+    m_availableSquares.set();
+#endif // USE_AVAILABLE_SQUARES
   }
 
   // Make a copy of the given board.
   MarkedBoard(MarkedBoard const &obj)
-    : m_numPlacedMarkers(obj.m_numPlacedMarkers),
-      m_markers         (obj.m_markers),
-      m_usedDistances   (obj.m_usedDistances)
+    : m_numPlacedMarkers   (obj.m_numPlacedMarkers),
+      m_markers            (obj.m_markers),
+#ifdef USE_AVAILABLE_SQUARES
+      m_availableSquares   (obj.m_availableSquares),
+#endif // USE_AVAILABLE_SQUARES
+      m_usedDistancesBitset(obj.m_usedDistancesBitset),
+      m_usedDistancesArray (obj.m_usedDistancesArray)
   {}
 
   // Return number of markers placed on board.
@@ -165,8 +240,19 @@ public:      // methods
   // Requires: 0 <= square < N*N
   //
   bool canPlaceAt(int square) const {
-    // This mechanism is no longer being used.
+#ifdef USE_AVAILABLE_SQUARES
+    return m_availableSquares.test(square);
+#else
     return true;
+#endif // USE_AVAILABLE_SQUARES
+  }
+
+  // Remove 'square' from the set of squares we will try placing markers
+  // into.
+  void removeAvailableSquare(int square) {
+#ifdef USE_AVAILABLE_SQUARES
+    m_availableSquares.set(square, false);
+#endif // USE_AVAILABLE_SQUARES
   }
 
   // Modify this board, putting a marker on 'square'.  Return true iff
@@ -185,12 +271,17 @@ public:      // methods
   // Requires: 0 <= distance <= MAX_DISTANCE(N)
   //
   bool usedDistance(int distance) const {
-    return m_usedDistances.test(distance);
+    return m_usedDistancesBitset.test(distance);
   }
 
   // Return true if 'this' board is the same as 'other' except for some
   // possible rotation and/or reflection.
   bool isEquivalentTo(MarkedBoard const &other) const;
+
+  // Construct internal-use tables.  Must be called before 'placeAt',
+  // etc.
+  static void buildSquaresAtDistanceFromMap();
+  static void buildEquidistantSquaresMap();
 };
 
 
@@ -289,6 +380,8 @@ int computeDistance(int sq1, int sq2)
 template <int N>
 bool MarkedBoard<N>::placeAt(int square)
 {
+  numPlaceAtCalls++;
+
   // Cannot place more than N markers.
   if (m_numPlacedMarkers >= N) {
     return false;
@@ -299,23 +392,139 @@ bool MarkedBoard<N>::placeAt(int square)
     return false;
   }
 
+  // Number of elements in 'm_usedDistancesArray' before adding
+  // things to it here.
+  int origNumUsedDistances = NUM_PAIRS(m_numPlacedMarkers);
+  assert((size_t)origNumUsedDistances == m_usedDistancesBitset.count());
+
+  // Index of next element to add to 'm_usedDistancesArray'.
+  int nextUDAIndex = origNumUsedDistances;
+
   // Add the distance from the new square to each of the existing
   // markers.
   for (int i=0; i < m_numPlacedMarkers; i++) {
     int existing = m_markers.at(i);
     int distance = computeDistance<N>(square, existing);
-    if (m_usedDistances.test(distance)) {
+    if (m_usedDistancesBitset.test(distance)) {
       // Distance is not unique.
       return false;
     }
-    m_usedDistances.set(distance);
+    m_usedDistancesBitset.set(distance);
+    m_usedDistancesArray.at(nextUDAIndex++) = distance;
   }
+  assert(nextUDAIndex == NUM_PAIRS(m_numPlacedMarkers+1));
+
+#if defined(USE_AVAILABLE_SQUARES)
+  // Remove all squares that are a new distance from a pre-existing
+  // marker.
+  for (int i=origNumUsedDistances; i < nextUDAIndex; i++) {
+    int newDistance = m_usedDistancesArray.at(i);
+    for (int j=0; j < m_numPlacedMarkers; j++) {
+      int existing = m_markers.at(j);
+      this->removeAvailableSquaresAt(newDistance, existing);
+    }
+  }
+
+  // Remove all squares that are a used (previously or newly) distance
+  // from the new marker.
+  for (int i=0; i < nextUDAIndex; i++) {
+    int distance = m_usedDistancesArray.at(i);
+    this->removeAvailableSquaresAt(distance, square);
+  }
+
+  // Remove all squares that are equidistant between an existing and
+  // the new marker.  Adding a marker to any such square would fail
+  // due to it having the same distance to each.
+  for (int j=0; j < m_numPlacedMarkers; j++) {
+    int existing = m_markers.at(j);
+    this->removeEquidistantSquares(existing, square);
+  }
+#endif // USE_AVAILABLE_SQUARES
 
   // Place the new marker.
   m_markers.at(m_numPlacedMarkers++) = square;
 
   return true;
 }
+
+
+template <int N>
+array< array< bitset<N*N>, N*N >, MAX_DISTANCE(N)+1 >
+MarkedBoard<N>::s_squaresAtDistanceFromMap;
+
+
+template <int N>
+/*static*/ void MarkedBoard<N>::buildSquaresAtDistanceFromMap()
+{
+  for (int distance=0; distance <= MAX_DISTANCE(N); distance++) {
+    for (int square=0; square < N*N; square++) {
+      // Start with all ones.
+      bitset<N*N> mask;
+      mask.set();
+
+      // Clear squares that are 'distance' from 'square'.
+      for (int otherSquare=0; otherSquare < N*N; otherSquare++) {
+        if (computeDistance<N>(square, otherSquare) == distance) {
+          mask.set(otherSquare, false);
+        }
+      }
+
+      // Add this to the global table.
+      s_squaresAtDistanceFromMap.at(distance).at(square) = mask;
+    }
+  }
+}
+
+
+#ifdef USE_AVAILABLE_SQUARES
+template <int N>
+void MarkedBoard<N>::removeAvailableSquaresAt(int distance, int square)
+{
+  bitset<N*N> const &mask = s_squaresAtDistanceFromMap.at(distance).at(square);
+  m_availableSquares &= mask;
+}
+#endif // USE_AVAILABLE_SQUARES
+
+
+template <int N>
+array< array< bitset<N*N>, N*N >, N*N >
+MarkedBoard<N>::s_equidistantSquaresMap;
+
+
+template <int N>
+/*static*/ void MarkedBoard<N>::buildEquidistantSquaresMap()
+{
+  for (int sq1 = 0; sq1 < N*N; sq1++) {
+    for (int sq2 = 0; sq2 < N*N; sq2++) {
+      // Start with all ones.
+      bitset<N*N> mask;
+      mask.set();
+
+      // Zero the entries corresponding to equidistant intermediate
+      // squares.
+      for (int square=0; square < N*N; square++) {
+        int d1 = computeDistance<N>(square, sq1);
+        int d2 = computeDistance<N>(square, sq2);
+        if (d1 == d2) {
+          mask.set(square, false);
+        }
+      }
+
+      // Add this to the persistent table.
+      s_equidistantSquaresMap.at(sq1).at(sq2) = mask;
+    }
+  }
+}
+
+
+#ifdef USE_AVAILABLE_SQUARES
+template <int N>
+void MarkedBoard<N>::removeEquidistantSquares(int sq1, int sq2)
+{
+  bitset<N*N> const &mask = s_equidistantSquaresMap.at(sq1).at(sq2);
+  m_availableSquares &= mask;
+}
+#endif // USE_AVAILABLE_SQUARES
 
 
 // Return the square number corresponding to 'square' after applying
@@ -477,11 +686,6 @@ bool allMarkersOnDiagonal(MarkedBoard<N> const &board)
 }
 
 
-// Number of calls to 'placeMarkers', kept in order to measure the
-// effectiveness of some optimizations.
-static long numPlaceMarkersCalls = 0;
-
-
 // Add to 'solutions' all of the solved boards obtainable by adding
 // markers to 'orig' and that are not already present, possibly as
 // rotated and/or flipped variants, in 'solutions'.
@@ -506,28 +710,72 @@ void placeMarkers(list<MarkedBoard<N> > &solutions,
     return;
   }
 
-  for (int square = orig.firstCandidateSquare(); square < N*N; square++) {
-    // Require that the first marker be placed in the SSW octant.  That
-    // reduces the number of symmetric configurations that are produced
-    // by the enumeration before explicitly checking for symmetry.
-    if (orig.numPlacedMarkers() == 0) {
+  // Special case for first marker.
+  if (orig.numPlacedMarkers() == 0) {
+    // Make a copy of the original board so I can modify the
+    // available squares set.
+    MarkedBoard<N> base(orig);
+
+    for (int square = base.firstCandidateSquare(); square < N*N; square++) {
+      // Require that the first marker be placed in the SSW octant.  That
+      // reduces the number of symmetric configurations that are produced
+      // by the enumeration before explicitly checking for symmetry.
       if (!inSSWOctant<N>(square)) {
         continue;
       }
-    }
 
-    // If all currently placed markers are on the diagonal, then only
-    // place new markers on or below that diagonal, to further reduce
-    // enumeration of symmetric configurations.
-    else if (allMarkersOnDiagonal(orig) &&
-             aboveDiagonal<N>(square)) {
-      continue;
-    }
+      if (base.canPlaceAt(square)) {
+        MarkedBoard<N> modified(base);
+        if (modified.placeAt(square)) {
+          placeMarkers(solutions, modified);
+        }
+      }
 
-    if (orig.canPlaceAt(square)) {
-      MarkedBoard<N> modified(orig);
-      if (modified.placeAt(square)) {
-        placeMarkers(solutions, modified);
+      // Preclude placing any markers on any of the symmetric versions
+      // of 'square'.
+      //
+      // For example, after having decided not to place a marker on
+      // square 0 (lower-left corner), it is pointless to enumerate
+      // cases where a second or later marker is placed in a corner,
+      // because at best we would only enumerate a symmetric version of
+      // a solution that was already found when the first marker was
+      // placed in the corner.
+      for (int flip=0; flip < 2; flip++) {
+        for (int rot=0; rot < 4; rot++) {
+          int transSquare = transformSquare<N>(square, flip, rot);
+          base.removeAvailableSquare(transSquare);
+        }
+      }
+    }
+  }
+
+  // Special case: all existing markers are on the diagonal.
+  else if (allMarkersOnDiagonal(orig)) {
+    for (int square = orig.firstCandidateSquare(); square < N*N; square++) {
+      // If all currently placed markers are on the diagonal, then only
+      // place new markers on or below that diagonal, to further reduce
+      // enumeration of symmetric configurations.
+      if (aboveDiagonal<N>(square)) {
+        continue;
+      }
+
+      if (orig.canPlaceAt(square)) {
+        MarkedBoard<N> modified(orig);
+        if (modified.placeAt(square)) {
+          placeMarkers(solutions, modified);
+        }
+      }
+    }
+  }
+
+  // General case.
+  else {
+    for (int square = orig.firstCandidateSquare(); square < N*N; square++) {
+      if (orig.canPlaceAt(square)) {
+        MarkedBoard<N> modified(orig);
+        if (modified.placeAt(square)) {
+          placeMarkers(solutions, modified);
+        }
       }
     }
   }
@@ -602,6 +850,8 @@ void printSolutions()
 {
   makeDecomposeTable<N>();
   makeDistanceTable<N>();
+  MarkedBoard<N>::buildSquaresAtDistanceFromMap();
+  MarkedBoard<N>::buildEquidistantSquaresMap();
 
   int numPairs = (N * (N-1) / 2);
   int numDistances = numUniqueDistances<N>();
@@ -628,6 +878,8 @@ void printSolutions()
   placeMarkers(solutions, emptyBoard);
 
   cout << "numPlaceMarkersCalls: " << numPlaceMarkersCalls << '\n';
+  cout << "numPlaceAtCalls: "      << numPlaceAtCalls      << '\n';
+
   cout << "Found " << solutions.size() << " solutions.\n";
   for (auto const &sol : solutions) {
     printBoard(cout, "Solution:", sol);
