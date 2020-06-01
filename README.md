@@ -55,8 +55,6 @@ This is a table of the results obtained with this program.
   16           0                          120        119
 ```
 
-The blank entries are things I did not take the time to compute.
-
 There are two columns for time, corresponding to different versions of
 the code.  The second column (851a42c3) is after adding
 m_availableSquares, but the most impactful part of that optimization is
