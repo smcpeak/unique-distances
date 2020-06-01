@@ -174,7 +174,7 @@ public:      // methods
   {
     // Initialize 'm_markers' to bogus values for determinism.
     for (int i=0; i < N; i++) {
-      m_markers.at(i) = N;
+      m_markers.at(i) = N*N;
     }
 
 #ifdef USE_AVAILABLE_SQUARES
