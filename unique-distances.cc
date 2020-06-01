@@ -864,7 +864,7 @@ void printSolutions()
   MarkedBoard<N>::buildSquaresAtDistanceFromMap();
   MarkedBoard<N>::buildEquidistantSquaresMap();
 
-  int numPairs = (N * (N-1) / 2);
+  int numPairs = NUM_PAIRS(N);
   int numDistances = numUniqueDistances<N>();
 
   cout << "N=" << N
