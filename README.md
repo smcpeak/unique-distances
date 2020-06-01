@@ -34,27 +34,34 @@ parameter for performance reasons.
 This is a table of the results obtained with this program.
 
 ```
-   N   Solutions    Time (s)   Pairs  Distances
-  --   ---------    --------   -----  ---------
-   1           1           0       0          0
-   2           2           0       1          2
-   3           5           0       3          5
-   4          23           0       6          9
-   5          35           0      10         14
-   6           2           0      15         19
-   7           1           0      21         26
-   8           0           0      28         33
-   9           0           1      36         41
-  10           0           9      45         50
-  11           0          79      55         60
-  12           0         561      66         70
-  13           0        4329      78         82
-  14           0       27260      91         93
-  15                             105        105
-  16           0                 120        119
+                    b51eae13  851a42c3
+   N   Solutions    Time (s)  Time (s)  Pairs  Distances
+  --   ---------    --------  --------  -----  ---------
+   1           1           0                0          0
+   2           2           0                1          2
+   3           5           0                3          5
+   4          23           0                6          9
+   5          35           0               10         14
+   6           2           0               15         19
+   7           1           0               21         26
+   8           0           0               28         33
+   9           0           1         1     36         41
+  10           0           9         6     45         50
+  11           0          79        40     55         60
+  12           0         561               66         70
+  13           0        4329               78         82
+  14           0       27260               91         93
+  15           0                151780    105        105
+  16           0                          120        119
 ```
 
 The blank entries are things I did not take the time to compute.
+
+There are two columns for time, corresponding to different versions of
+the code.  The second column (851a42c3) is after adding
+m_availableSquares, but the most impactful part of that optimization is
+simply blocking addition of markers symmetric to squares already skipped
+for the first marker, which could be done more efficiently.
 
 ## Solutions for N=6 and N=7
 
@@ -88,11 +95,6 @@ For N=7, there is only one solution:
   ..O....
   O.O....
 ```
-
-## Speculation about N=15
-
-The trend in the table strongly suggests there are no solutions for N=15,
-but I haven't let the program run long enough to check that.
 
 ## Absence of solutions for N=16 and beyond
 
