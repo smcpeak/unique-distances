@@ -116,12 +116,21 @@ private:     // instance data
   array<int,N> m_markers;
 
 #ifdef USE_AVAILABLE_SQUARES
-  // Set of squares that are available for attempted placement.  This is
-  // an overapproximation; it might be that some squares are marked as
-  // available but in fact will not work.
+  // Set of squares that are available for attempted placement.
   //
-  // The reason for maintaining this set is to detect and avoid some bad
-  // placements more efficiently than the naive method.
+  // This set is used to quickly detect when a placement will be invalid
+  // due to causing a distance to be used twice, and hence primarily
+  // meant as an optimization.  However, the cost of updating this set
+  // seems comparable to the time saved by checking it, at least in my
+  // somewhat crude measurements.  Nevertheless, my intuition is I
+  // should be able to make this a profitable optimization.
+  //
+  // It has a second purpose, which is to mark some squares as
+  // unavailable once we have decided not to place the first marker
+  // there or in a symmetric (flip/rot) location.  This second use cuts
+  // run time by about 50%, so a mechanism to do that should be retained
+  // even if the full generality of 'm_availableSquares' is removed.
+  //
   bitset<N*N> m_availableSquares;
 #endif // USE_AVAILABLE_SQUARES
 
@@ -129,14 +138,13 @@ private:     // instance data
   // of markers.  Not all distances are possible (only sums of squares
   // are), but I do not bother to compress away the unusable bits.
   //
-  // Invariant: m_usedDistancesBitset.count() ==
-  //            m_numPlacedMarkers * (m_numPlacedMarkers-1) / 2
+  // Invariant: m_usedDistancesBitset.count() == NUM_PAIRS(m_numPlacedMarkers)
   //
   bitset<MAX_DISTANCE(N) + 1> m_usedDistancesBitset;
 
   // Sequence of used distances, in the order they were used as markers
   // were placed.  This is maintained to facilitate iterating over the
-  // set.
+  // set of used distances.
   //
   // Invariant: elementsOf(m_usedDistancesArray) == m_usedDistancesBitset
   //
@@ -533,6 +541,7 @@ void MarkedBoard<N>::removeEquidistantSquares(int sq1, int sq2)
 // Requires: 0 <= square < N*N
 // Requires: 0 <= flip < 2
 // Requires: 0 <= rot < 4
+// Ensures:  0 <= return < N*N
 //
 template <int N>
 int transformSquare(int square, int flip, int rot)
