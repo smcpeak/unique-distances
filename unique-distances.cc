@@ -836,6 +836,8 @@ int numUniqueDistances()
 {
   bitset<MAX_DISTANCE(N)+1> distances;
 
+  // TODO: This outer loop is unnecessary.  'a' should be left as
+  // zero and only 'b' iterating.
   for (int a = 0; a < N*N - 1; a++) {
     if (aboveDiagonal<N>(a)) {
       continue;
